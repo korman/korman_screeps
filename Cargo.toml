@@ -1,8 +1,9 @@
 [package]
-name = "screeps-starter-rust"
-version = "0.0.0"
-authors = []
-edition = "2021"
+name = "korman screeps bot"
+version = "0.0.1"
+description = "Guo Hao Rust Screeps AI bot"      # 新增
+repository = "https://github.com/korman/korman_screeps.git"   # 新增（你的仓库）
+license = "MIT"                             # 新增
 
 [lib]
 crate-type = ["cdylib", "rlib"]
