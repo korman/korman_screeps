@@ -30,7 +30,7 @@
     "@rollup/plugin-terser": "^0.4.4",
     "rollup": "^4.21.0",
     "rollup-plugin-copy": "^3.5.0",
-    "screeps-api": "^1.16.0",
+    "screeps-api": "^1.7.2",
     "yamljs": "^0.3.0",
     "yargs": "^17.7.2"
   }
