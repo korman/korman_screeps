@@ -2,16 +2,19 @@
 
 Starter Rust AI for [Screeps: World][screeps], the JavaScript-based MMO game.
 
-This uses the [`screeps-game-api`] bindings from the [rustyscreeps] organization.
+This uses the [`screeps-game-api`] bindings from the [rustyscreeps]
+organization.
 
-[`wasm-pack`] is used for building the Rust code to WebAssembly. This example uses [Rollup] to
-bundle the resulting javascript, [Babel] to transpile generated code for compatibility with older
-Node.js versions running on the Screeps servers, and the [`screeps-api`] Node.js package to deploy.
+[`wasm-pack`] is used for building the Rust code to WebAssembly. This example
+uses [Rollup] to bundle the resulting javascript, [Babel] to transpile generated
+code for compatibility with older Node.js versions running on the Screeps
+servers, and the [`screeps-api`] Node.js package to deploy.
 
-Documentation for the Rust version of the game APIs is at https://docs.rs/screeps-game-api/.
+Documentation for the Rust version of the game APIs is at
+https://docs.rs/screeps-game-api/.
 
-Almost all crates on https://crates.io/ are usable (only things which interact with OS
-apis are broken).
+Almost all crates on https://crates.io/ are usable (only things which interact
+with OS apis are broken).
 
 ## Quickstart:
 
@@ -58,32 +61,37 @@ npm run deploy -- --server mmo
 
 ## Migration to 0.22
 
-Versions of [`screeps-game-api`] at 0.22 or higher are no longer compatible with the
-[`cargo-screeps`] tool for building and deployment; the transpile step being handled by [Babel] is
-required to transform the generated JS into code that the game servers can load.
+Versions of [`screeps-game-api`] at 0.22 or higher are no longer compatible with
+the [`cargo-screeps`] tool for building and deployment; the transpile step being
+handled by [Babel] is required to transform the generated JS into code that the
+game servers can load.
 
-To migrate an existing bot to using the new JavaScript translation layer and deploy script:
+To migrate an existing bot to using the new JavaScript translation layer and
+deploy script:
 
-- Create a `.screeps.yaml` with the relevant settings from your `screeps.toml` file applied to the
-  new `.example-screeps.yaml` example file in this repo.
+- Create a `.screeps.yaml` with the relevant settings from your `screeps.toml`
+  file applied to the new `.example-screeps.yaml` example file in this repo.
 - Add to your `.gitignore`: `.screeps.yaml`, `node_modules`, and `dist`
-- Create a `package.json` copied from the one in this repo and make appropriate customizations.
-  - Importantly, if you've modified your module name from `screeps-starter-rust` to something else,
-    you need to update the `name` field in `package.json` to be your bot's name.
-- Install Node.js (from the quickstart steps above), then run `npm install` from within the bot
-  directory to install the required packages.
+- Create a `package.json` copied from the one in this repo and make appropriate
+  customizations.
+  - Importantly, if you've modified your module name from `screeps-starter-rust`
+    to something else, you need to update the `name` field in `package.json` to
+    be your bot's name.
+- Install Node.js (from the quickstart steps above), then run `npm install` from
+  within the bot directory to install the required packages.
 - Copy the `deploy.js` script over to a new `js_tools` directory.
-- Add `main.js` to a new `js_src` directory, either moved from your existing `javascript` dir and
-  updated, or freshly copied.
+- Add `main.js` to a new `js_src` directory, either moved from your existing
+  `javascript` dir and updated, or freshly copied.
   - If updating, you'll need to change:
     - Import formatting, particularly for the wasm module.
-    - wasm module initialization has changed, requiring two calls to first compile the module,
-      then to initialize the instance of the module.
-  - Whether updating or copying fresh, if you've modified your bot name from `screeps-starter-rust`
-    you'll need to update the bot package import and `MODULE_NAME` at the beginning of `main.js`
-    to be your updated bot name.
+    - wasm module initialization has changed, requiring two calls to first
+      compile the module, then to initialize the instance of the module.
+  - Whether updating or copying fresh, if you've modified your bot name from
+    `screeps-starter-rust` you'll need to update the bot package import and
+    `MODULE_NAME` at the beginning of `main.js` to be your updated bot name.
 - Update your `Cargo.toml` with version `0.22` for `screeps-game-api`
-- Run `npm run deploy -- --server ptr --dryrun` to compile for PTR, remove the `--dryrun` to deploy
+- Run `npm run deploy -- --server ptr --dryrun` to compile for PTR, remove the
+  `--dryrun` to deploy
 
 ### Troubleshooting
 
@@ -101,7 +109,9 @@ Error: Not Authorized
     at async run (PATH_TO_YOUR_BOT/js_tools/deploy.js:163:3
 ```
 
-Then the password in your `.screeps.yaml` file is getting picked up as something aside from a string. Passwords sent to the server must be a string. Wrap it in quotes: `password: "12345"`
+Then the password in your `.screeps.yaml` file is getting picked up as something
+aside from a string. Passwords sent to the server must be a string. Wrap it in
+quotes: `password: "12345"`
 
 #### Error: Unknown module
 
@@ -117,7 +127,8 @@ Error: Unknown module 'bot-name-here'
     at Object.exports.run (<runtime>:20865:24)
 ```
 
-You need to make sure you update your `package.json` `name` field to be your bot name.
+You need to make sure you update your `package.json` `name` field to be your bot
+name.
 
 #### CompileError: WebAssembly.Module(): Invalid opcode
 
@@ -132,7 +143,8 @@ CompileError: WebAssembly.Module(): Compiling wasm function #327:core::unicode::
     at Object.exports.run (<runtime>:20865:24)
 ```
 
-You need to update your `Cargo.toml` to include the `--signext-lowering` flag for `wasm-opt`. For example:
+You need to update your `Cargo.toml` to include the `--signext-lowering` flag
+for `wasm-opt`. For example:
 
 ```
 [package.metadata.wasm-pack.profile.release]
