@@ -1,6 +1,6 @@
 {
-  "name": "screeps-starter-rust",
-  "version": "0.1.0",
+  "name": "korman_screeps_bot",
+  "version": "0.0.1",
   "description": "",
   "files": [
     "dist/"

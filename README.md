@@ -1,149 +1,107 @@
-# screeps-starter-rust
+# korman_screeps_bot 项目概述
 
-Starter Rust AI for [Screeps: World][screeps], the JavaScript-based MMO game.
+korman_screeps_bot 是一个基于 Rust 开发的 Screeps AI bot 项目，专为 Screeps:
+World MMO 游戏设计。通过 WebAssembly (WASM) 技术，将 Rust 代码编译为高效
+bot，实现游戏内的资源采集、建筑管理、防御策略等功能。项目采用 Legion ECS
+架构，确保代码模块化、高性能，适合新手学习 Rust 编程和游戏 AI 开发。
 
-This uses the [`screeps-game-api`] bindings from the [rustyscreeps] organization.
+## 项目功能介绍
 
-[`wasm-pack`] is used for building the Rust code to WebAssembly. This example uses [Rollup] to
-bundle the resulting javascript, [Babel] to transpile generated code for compatibility with older
-Node.js versions running on the Screeps servers, and the [`screeps-api`] Node.js package to deploy.
+- **基础 AI 逻辑**：支持自动采集能量、升级控制器、生成 creep 等核心操作。
+- **ECS 架构**：使用 Legion ECS 模拟房间布局和 creep 行为，提高扩展性。
+- **性能优化**：Rust WASM bot 在计算密集任务中快 JS 2-5x，CPU 效率高。
+- **部署支持**：兼容私人服务器和 MMO，易于手动或自动上传代码。
 
-Documentation for the Rust version of the game APIs is at https://docs.rs/screeps-game-api/.
+## 运行与编译指南
 
-Almost all crates on https://crates.io/ are usable (only things which interact with OS
-apis are broken).
+项目使用 wasm-pack 编译 Rust 到 WASM，Rollup 和 Babel 处理 JS
+兼容性，screeps-api 部署。以下是完整步骤（整合英文 README 内容）：
 
-## Quickstart:
+1. **环境安装**：
 
-```sh
-# Install rustup: https://rustup.rs/
+   - 安装 rustup：访问 https://rustup.rs/。
+   - 安装 wasm-pack：cargo install wasm-pack。
+   - 安装 wasm-opt：cargo install wasm-opt。
+   - 安装 Node.js（推荐 v20）：用 nvm 管理（Mac/Linux:
+     https://github.com/nvm-sh/nvm；Windows:
+     https://github.com/coreybutler/nvm-windows）。运行 nvm install 20 && nvm
+     use 20。
 
-# Install wasm-pack
-cargo install wasm-pack
+2. **克隆与配置**：
 
-# Install wasm-opt
-cargo install wasm-opt
+   - 克隆项目：git clone https://github.com/korman/korman_screeps.git && cd
+     korman_screeps。
+   - 自定义 crate 名：如果修改 Cargo.toml 中的 name，更新 js_src/main.js 中的
+     MODULE_NAME 和 import，以及 package.json 的 "name"。
+   - 安装 JS 依赖：npm install。
 
-# Install Node.js for build steps - versions 16 through 22 have been tested, any should work
-# nvm is recommended but not required to manage the install, follow instructions at:
-# Mac/Linux: https://github.com/nvm-sh/nvm
-# Windows: https://github.com/coreybutler/nvm-windows
+3. **配置部署**：
 
-# Installs Node.js at version 20
-# (all versions within LTS support should work;
-# 20 is recommended due to some observed problems on Windows systems using 22)
-nvm install 20
-nvm use 20
+   - 拷贝示例配置：cp .example-screeps.yaml .screeps.yaml，编辑服务器设置（如
+     MMO 用 token，私人服务器用 host/port）。
 
-# Clone the starter
-git clone https://github.com/rustyscreeps/screeps-starter-rust.git
-cd screeps-starter-rust
-# note: if you customize the name of the crate, you'll need to update the MODULE_NAME
-# variable in the js_src/main.js file and the module import with the updated name, as well
-# as the "name" in the package.json
+   - 私人服务器示例：
 
-# Install dependencies for JS build
-npm install
+     ```yaml
+     servers:
+       private-server:
+         host: 127.0.0.1
+         port: 21025
+         secure: false
+         branch: default
+     ```
 
-# Copy the example config, and set up at least one deployment mode.
-cp .example-screeps.yaml .screeps.yaml
-nano .screeps.yaml
+4. **编译与部署**：
 
-# compile for a configured server but don't upload
-npm run deploy -- --server ptr --dryrun
+   - 模拟部署：npm run deploy -- --server ptr --dryrun（检查但不上传）。
+   - 真实部署：npm run deploy -- --server private-server。
 
-# compile and upload to a configured server
-npm run deploy -- --server mmo
-```
+5. **迁移到新版**（如果从旧版升级）：
 
-## Migration to 0.22
+   - 创建 .screeps.yaml，从 screeps.toml 迁移设置。
+   - 添加 .gitignore：.screeps.yaml、node_modules、dist。
+   - 拷贝 package.json 并自定义 name。
+   - 安装 npm 依赖，拷贝 deploy.js 到 js_tools/，main.js 到 js_src/（更新 import
+     和 MODULE_NAME）。
+   - Cargo.toml 更新 screeps-game-api 到 v0.23.1。
+   - 测试：npm run deploy -- --server ptr --dryrun。
 
-Versions of [`screeps-game-api`] at 0.22 or higher are no longer compatible with the
-[`cargo-screeps`] tool for building and deployment; the transpile step being handled by [Babel] is
-required to transform the generated JS into code that the game servers can load.
+6. **故障排除**：
 
-To migrate an existing bot to using the new JavaScript translation layer and deploy script:
+   - "Not Authorized"：YAML 密码加双引号 "12345"。
+   - "Unknown module"：更新 package.json "name"。
+   - "Invalid opcode"：Cargo.toml 添加 --signext-lowering。
 
-- Create a `.screeps.yaml` with the relevant settings from your `screeps.toml` file applied to the
-  new `.example-screeps.yaml` example file in this repo.
-- Add to your `.gitignore`: `.screeps.yaml`, `node_modules`, and `dist`
-- Create a `package.json` copied from the one in this repo and make appropriate customizations.
-  - Importantly, if you've modified your module name from `screeps-starter-rust` to something else,
-    you need to update the `name` field in `package.json` to be your bot's name.
-- Install Node.js (from the quickstart steps above), then run `npm install` from within the bot
-  directory to install the required packages.
-- Copy the `deploy.js` script over to a new `js_tools` directory.
-- Add `main.js` to a new `js_src` directory, either moved from your existing `javascript` dir and
-  updated, or freshly copied.
-  - If updating, you'll need to change:
-    - Import formatting, particularly for the wasm module.
-    - wasm module initialization has changed, requiring two calls to first compile the module,
-      then to initialize the instance of the module.
-  - Whether updating or copying fresh, if you've modified your bot name from `screeps-starter-rust`
-    you'll need to update the bot package import and `MODULE_NAME` at the beginning of `main.js`
-    to be your updated bot name.
-- Update your `Cargo.toml` with version `0.22` for `screeps-game-api`
-- Run `npm run deploy -- --server ptr --dryrun` to compile for PTR, remove the `--dryrun` to deploy
+## 代码格式化规范
 
-### Troubleshooting
+- **Rust 代码**：使用 cargo fmt 进行格式化，确保所有 .rs 文件符合 Rust
+  风格指南。运行 cargo fmt 自动应用。
+- **JavaScript/TypeScript/JSON**：使用 deno fmt --unstable-component
+  命令格式化，确保一致性。运行 deno fmt js_src/ 和 deno fmt *.json。
 
-#### Error: Not Authorized
+## 项目结构说明
 
-If you encounter an error like the following:
+- src/：Rust 源代码，包括 lib.rs (主逻辑)。
+- js_src/：JS 绑定文件，如 main.js (WASM 加载)。
+- js_tools/：部署脚本，如 deploy.js。
+- pkg/：WASM 编译输出（临时）。
+- dist/：Rollup 打包输出（部署用）。
+- .screeps.yaml：部署配置。
+- Cargo.toml：Rust 依赖和设置。
+- package.json：JS 依赖和脚本。
 
-```
-Error: Not Authorized
-    at ScreepsAPI.req (PATH_TO_YOUR_BOT/node_modules/screeps-api/dist/ScreepsAPI.js:1212:17)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-    at async ScreepsAPI.auth (PATH_TO_YOUR_BOT/node_modules/screeps-api/dist/ScreepsAPI.js:1162:17)
-    at async ScreepsAPI.fromConfig (PATH_TO_YOUR_BOT/node_modules/screeps-api/dist/ScreepsAPI.js:1394:9)
-    at async upload (PATH_TO_YOUR_BOT/js_tools/deploy.js:148:17)
-    at async run (PATH_TO_YOUR_BOT/js_tools/deploy.js:163:3
-```
+## 开发与贡献指南
 
-Then the password in your `.screeps.yaml` file is getting picked up as something aside from a string. Passwords sent to the server must be a string. Wrap it in quotes: `password: "12345"`
+- **开发**：fork 仓库，feature 分支开发，cargo test 测试 Rust，npm run watch
+  热重载 JS。提交 PR 前 cargo fmt 和 deno fmt。
+- **贡献**：欢迎 bug fix、new feature 或 doc 改进。提交 PR 时描述变化，引用
+  issue。
+- **社区**：Discord #rust 频道，GitHub issues 讨论。
 
-#### Error: Unknown module
+**Key Citations**：
 
-If you encounter an error like the following:
-
-```
-Error: Unknown module 'bot-name-here'
-    at Object.requireFn (<runtime>:20897:23)
-    at Object.module.exports.loop (main:933:33)
-    at __mainLoop:1:52
-    at __mainLoop:2:3
-    at Object.exports.evalCode (<runtime>:15381:76)
-    at Object.exports.run (<runtime>:20865:24)
-```
-
-You need to make sure you update your `package.json` `name` field to be your bot name.
-
-#### CompileError: WebAssembly.Module(): Invalid opcode
-
-If you encounter an error like the following:
-
-```
-CompileError: WebAssembly.Module(): Compiling wasm function #327:core::unicode::printable::check::h9ddbb57eb721c858 failed: Invalid opcode (enable with --experimental-wasm-se) @+257876
-    at Object.module.exports.loop (main:934:35)
-    at __mainLoop:1:52
-    at __mainLoop:2:3
-    at Object.exports.evalCode (<runtime>:15381:76)
-    at Object.exports.run (<runtime>:20865:24)
-```
-
-You need to update your `Cargo.toml` to include the `--signext-lowering` flag for `wasm-opt`. For example:
-
-```
-[package.metadata.wasm-pack.profile.release]
-wasm-opt = ["-O4", "--signext-lowering"]
-```
-
-[screeps]: https://screeps.com/
-[`wasm-pack`]: https://rustwasm.github.io/wasm-pack/
-[Rollup]: https://rollupjs.org/
-[Babel]: https://babeljs.io/
-[`screeps-api`]: https://github.com/screepers/node-screeps-api
-[`screeps-game-api`]: https://github.com/rustyscreeps/screeps-game-api/
-[`cargo-screeps`]: https://github.com/rustyscreeps/cargo-screeps/
-[rustyscreeps]: https://github.com/rustyscreeps/
+- [rustyscreeps/screeps-starter-rust - GitHub](https://github.com/rustyscreeps/screeps-starter-rust)
+- [Screeps #27: Optimizing Pathfinding with Rust | Field Journal](https://jonwinsley.com/notes/screeps-clockwork)
+- [Redesign Screeps in Rust : r/rust - Reddit](https://www.reddit.com/r/rust/comments/vf7758/redesign_screeps_in_rust/)
+- [rustyscreeps/screeps-game-api - GitHub](https://github.com/rustyscreeps/screeps-game-api)
+- [Automating Base Planning in Screeps – A Step-by-Step Guide](https://sy-harabi.github.io/Automating-base-planning-in-screeps/)
