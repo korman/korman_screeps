@@ -1,9 +1,9 @@
 "use strict";
 import "fastestsmallesttextencoderdecoder-encodeinto/EncoderDecoderTogether.min.js";
 
-import * as bot from "../pkg/screeps_starter_rust.js";
+import * as bot from "../pkg/korman_screeps_bot.js"; // 修改为您的包名生成的 JS 文件
 // replace this with the name of your module
-const MODULE_NAME = "screeps_starter_rust";
+const MODULE_NAME = "korman_screeps_bot"; // 修改为您的包名（连字符保留）
 const BUCKET_BOOT_THRESHOLD = 1500;
 
 // This provides the function `console.error` that wasm_bindgen sometimes expects to exist,

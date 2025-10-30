@@ -56,10 +56,10 @@ pub fn game_loop() {
         }
     });
 
-    debug!("running spawns");
+    debug!("所有运行中的基地");
     let mut additional = 0;
     for spawn in game::spawns().values() {
-        debug!("running spawn {}", spawn.name());
+        debug!("运行的基地: {}", spawn.name());
 
         let body = [Part::Move, Part::Move, Part::Carry, Part::Work];
         if spawn.room().unwrap().energy_available() >= body.iter().map(|p| p.cost()).sum() {

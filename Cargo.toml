@@ -1,5 +1,5 @@
 [package]
-name = "korman-screeps-bot"
+name = "korman_screeps_bot"
 version = "0.0.1"
 description = "Guo Hao Rust Screeps AI bot"
 repository = "https://github.com/korman/korman_screeps.git"

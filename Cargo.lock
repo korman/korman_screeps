@@ -100,7 +100,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "korman-screeps-bot"
+name = "korman_screeps_bot"
 version = "0.0.1"
 dependencies = [
  "fern",
