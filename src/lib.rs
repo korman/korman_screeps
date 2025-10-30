@@ -1,8 +1,4 @@
-use std::{
-    cell::RefCell,
-    collections::{hash_map::Entry, HashMap, HashSet},
-};
-
+use hecs::World;
 use js_sys::{JsString, Object, Reflect};
 use log::*;
 use screeps::{
@@ -14,48 +10,60 @@ use screeps::{
     objects::{Creep, Source, StructureController},
     prelude::*,
 };
+use std::collections::{HashMap, HashSet};
+use std::sync::Once;
 use wasm_bindgen::prelude::*;
 
 mod logging;
 
-// this is one way to persist data between ticks within Rust's memory, as opposed to
-// keeping state in memory on game objects - but will be lost on global resets!
-thread_local! {
-    static CREEP_TARGETS: RefCell<HashMap<String, CreepTarget>> = RefCell::new(HashMap::new());
-}
-
-static INIT_LOGGING: std::sync::Once = std::sync::Once::new();
-
-// this enum will represent a creep's lock on a specific target object, storing a js reference
-// to the object id so that we can grab a fresh reference to the object each successive tick,
-// since screeps game objects become 'stale' and shouldn't be used beyond the tick they were fetched
+// 定义CreepTarget枚举
 #[derive(Clone)]
 enum CreepTarget {
-    Upgrade(ObjectId<StructureController>),
     Harvest(ObjectId<Source>),
+    Upgrade(ObjectId<StructureController>),
 }
 
-// add wasm_bindgen to any function you would like to expose for call from js
-// to use a reserved name as a function name, use `js_name`:
+// Hecs 组件
+#[derive(Clone)]
+struct CreepId(String); // Creep ID
+
+// 初始化日志的Once实例
+static INIT_LOGGING: Once = Once::new();
+
+// game_loop
 #[wasm_bindgen(js_name = loop)]
 pub fn game_loop() {
-    INIT_LOGGING.call_once(|| {
-        // show all output of Info level, adjust as needed
-        logging::setup_logging(logging::Info);
-    });
+    INIT_LOGGING.call_once(|| logging::setup_logging(logging::Info));
+
+    let mut world = World::new();
+    let mut creep_targets: HashMap<String, CreepTarget> = HashMap::new();
 
     debug!("loop starting! CPU: {}", game::cpu::get_used());
 
-    // mutably borrow the creep_targets refcell, which is holding our creep target locks
-    // in the wasm heap
-    CREEP_TARGETS.with(|creep_targets_refcell| {
-        let mut creep_targets = creep_targets_refcell.borrow_mut();
-        debug!("running creeps");
-        for creep in game::creeps().values() {
-            run_creep(&creep, &mut creep_targets);
-        }
-    });
+    // 添加实体
+    for creep in game::creeps().values() {
+        world.spawn((CreepId(creep.name()),));
+    }
 
+    // 运行系统
+    run_creep_system(&mut world, &mut creep_targets);
+    spawn_creep_system();
+    memory_cleanup_system();
+
+    info!("done! cpu: {}", game::cpu::get_used())
+}
+
+// 系统: 运行 Creep
+fn run_creep_system(world: &mut World, creep_targets: &mut HashMap<String, CreepTarget>) {
+    for (_, creep_id) in world.query::<&CreepId>().iter() {
+        if let Some(creep) = game::creeps().get(creep_id.0.clone()) {
+            run_creep(&creep, creep_targets);
+        }
+    }
+}
+
+// 系统: 生成 Creep
+fn spawn_creep_system() {
     debug!("所有运行中的基地");
     let mut additional = 0;
     for spawn in game::spawns().values() {
@@ -63,7 +71,6 @@ pub fn game_loop() {
 
         let body = [Part::Move, Part::Move, Part::Carry, Part::Work];
         if spawn.room().unwrap().energy_available() >= body.iter().map(|p| p.cost()).sum() {
-            // create a unique name, spawn.
             let name_base = game::time();
             let name = format!("{}-{}", name_base, additional);
             match spawn.spawn_creep(&body, &name) {
@@ -72,27 +79,22 @@ pub fn game_loop() {
             }
         }
     }
+}
 
-    // memory cleanup; memory gets created for all creeps upon spawning, and any time move_to
-    // is used; this should be removed if you're using RawMemory/serde for persistence
+// 系统: 内存清理
+fn memory_cleanup_system() {
     if game::time() % 1000 == 0 {
         info!("running memory cleanup");
         let mut alive_creeps = HashSet::new();
-        // add all living creep names to a hashset
         for creep_name in game::creeps().keys() {
             alive_creeps.insert(creep_name);
         }
 
-        // grab `Memory.creeps` (if it exists)
         if let Ok(memory_creeps) = Reflect::get(&screeps::memory::ROOT, &JsString::from("creeps")) {
-            // convert from JsValue to Object
             let memory_creeps: Object = memory_creeps.unchecked_into();
-            // iterate memory creeps
             for creep_name_js in Object::keys(&memory_creeps).iter() {
-                // convert to String (after converting to JsString)
                 let creep_name = String::from(creep_name_js.dyn_ref::<JsString>().unwrap());
 
-                // check the HashSet for the creep name, deleting if not alive
                 if !alive_creeps.contains(&creep_name) {
                     info!("deleting memory for dead creep {}", creep_name);
                     let _ = Reflect::delete_property(&memory_creeps, &creep_name_js);
@@ -100,8 +102,6 @@ pub fn game_loop() {
             }
         }
     }
-
-    info!("done! cpu: {}", game::cpu::get_used())
 }
 
 fn run_creep(creep: &Creep, creep_targets: &mut HashMap<String, CreepTarget>) {
@@ -111,9 +111,9 @@ fn run_creep(creep: &Creep, creep_targets: &mut HashMap<String, CreepTarget>) {
     let name = creep.name();
     debug!("running creep {}", name);
 
-    let target = creep_targets.entry(name);
+    let target = creep_targets.entry(name.clone());
     match target {
-        Entry::Occupied(entry) => {
+        std::collections::hash_map::Entry::Occupied(entry) => {
             let creep_target = entry.get();
             match creep_target {
                 CreepTarget::Upgrade(controller_id)
@@ -154,9 +154,9 @@ fn run_creep(creep: &Creep, creep_targets: &mut HashMap<String, CreepTarget>) {
                 _ => {
                     entry.remove();
                 }
-            };
+            }
         }
-        Entry::Vacant(entry) => {
+        std::collections::hash_map::Entry::Vacant(entry) => {
             // no target, let's find one depending on if we have energy
             let room = creep.room().expect("couldn't resolve creep room");
             if creep.store().get_used_capacity(Some(ResourceType::Energy)) > 0 {
