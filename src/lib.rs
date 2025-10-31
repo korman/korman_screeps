@@ -636,6 +636,27 @@ fn run_creep(creep: &Creep, creep_targets: &mut HashMap<String, CreepTarget>) {
                                    time, name, controller_pos.x(), controller_pos.y(), controller.level());
                             entry.insert(CreepTarget::Upgrade(controller.id()));
                             found_controller = true;
+
+                            // 立即尝试移动到控制器，而不是等到下一个tick
+                            let range = pos.get_range_to(controller_pos);
+                            if !creep.pos().is_near_to(controller_pos) && creep.fatigue() == 0 {
+                                debug!("[{}] run_creep(): creep={} immediately moving to controller after target assignment", 
+                                       time, name);
+
+                                // 记录移动前的详细信息
+                                debug!("[{}] run_creep(): creep={} BEFORE MOVE TO controller - position: ({},{}), range: {}", 
+                                       time, name, pos.x(), pos.y(), range);
+
+                                // 使用智能移动函数
+                                let moved = smart_move(creep, &controller);
+
+                                // 记录移动后的位置
+                                let new_pos = creep.pos();
+                                debug!("[{}] run_creep(): creep={} AFTER MOVE TO controller - moved: {}, new position: ({},{}) - position changed: {}", 
+                                       time, name, moved, new_pos.x(), new_pos.y(),
+                                       (new_pos.x() != pos.x()) || (new_pos.y() != pos.y()));
+                            }
+
                             break;
                         }
                     }
@@ -665,6 +686,26 @@ fn run_creep(creep: &Creep, creep_targets: &mut HashMap<String, CreepTarget>) {
                         debug!("[{}] run_creep(): creep={} found active source at ({},{}) with energy={}, assigning harvest task", 
                                time, name, source_pos.x(), source_pos.y(), source.energy());
                         entry.insert(CreepTarget::Harvest(source.id()));
+
+                        // 立即尝试移动到资源，而不是等到下一个tick
+                        let range = pos.get_range_to(source_pos);
+                        if !creep.pos().is_near_to(source_pos) && creep.fatigue() == 0 {
+                            debug!("[{}] run_creep(): creep={} immediately moving to source after target assignment", 
+                                   time, name);
+
+                            // 记录移动前的详细信息
+                            debug!("[{}] run_creep(): creep={} BEFORE MOVE TO source - position: ({},{}), range: {}", 
+                                   time, name, pos.x(), pos.y(), range);
+
+                            // 使用智能移动函数
+                            let moved = smart_move(creep, &source);
+
+                            // 记录移动后的位置
+                            let new_pos = creep.pos();
+                            debug!("[{}] run_creep(): creep={} AFTER MOVE TO source - moved: {}, new position: ({},{}) - position changed: {}", 
+                                   time, name, moved, new_pos.x(), new_pos.y(),
+                                   (new_pos.x() != pos.x()) || (new_pos.y() != pos.y()));
+                        }
                     } else {
                         debug!(
                             "[{}] run_creep(): creep={} couldn't find any active sources in room",
