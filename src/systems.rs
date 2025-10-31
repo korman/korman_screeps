@@ -1,6 +1,5 @@
 use hecs::World;
 use js_sys::{JsString, Object, Reflect};
-use log::*;
 use screeps::{constants::Part, game};
 use std::collections::{HashMap, HashSet};
 use wasm_bindgen::JsCast;
@@ -19,18 +18,15 @@ pub fn run_creep_system(world: &mut World, creep_targets: &mut HashMap<String, C
 
 /// 系统: 生成 Creep
 pub fn spawn_creep_system() {
-    debug!("所有运行中的基地");
     let mut additional = 0;
     for spawn in game::spawns().values() {
-        debug!("运行的基地: {}", spawn.name());
-
         let body = [Part::Move, Part::Move, Part::Carry, Part::Work];
         if spawn.room().unwrap().energy_available() >= body.iter().map(|p| p.cost()).sum() {
             let name_base = game::time();
             let name = format!("{}-{}", name_base, additional);
             match spawn.spawn_creep(&body, &name) {
                 Ok(()) => additional += 1,
-                Err(e) => warn!("couldn't spawn: {:?}", e),
+                Err(_) => {}
             }
         }
     }
@@ -39,7 +35,6 @@ pub fn spawn_creep_system() {
 /// 系统: 内存清理
 pub fn memory_cleanup_system() {
     if game::time() % 1000 == 0 {
-        info!("running memory cleanup");
         let mut alive_creeps = HashSet::new();
         for creep_name in game::creeps().keys() {
             alive_creeps.insert(creep_name);
@@ -52,7 +47,6 @@ pub fn memory_cleanup_system() {
                 let creep_name = String::from(creep_name_js.dyn_ref::<JsString>().unwrap());
 
                 if !alive_creeps.contains(&creep_name) {
-                    info!("deleting memory for dead creep {}", creep_name);
                     let _ = Reflect::delete_property(&memory_creeps, &creep_name_js);
                 }
             }
