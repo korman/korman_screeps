@@ -1,8 +1,11 @@
 use screeps::{
-    constants::ResourceType, enums::StructureObject, find, objects::Creep, HasId, HasPosition,
-    SharedCreepProperties,
+    constants::ResourceType, enums::StructureObject, find, game, objects::Creep, HasId,
+    HasPosition, SharedCreepProperties,
 };
+use serde_json::{json, to_string};
 use std::collections::HashMap;
+use wasm_bindgen::prelude::*;
+use web_sys::console;
 
 use crate::movement::smart_move;
 use crate::types::CreepTarget;
@@ -69,27 +72,77 @@ pub fn run_creep(creep: &Creep, creep_targets: &mut HashMap<String, CreepTarget>
                         let in_range = creep.pos().is_near_to(source_pos);
 
                         if in_range {
+                            // 准备采集前记录详细信息
+                            let source_id_str = format!("{:?}", source.id());
+                            let pos_str = format!("x:{},y:{}", pos.x(), pos.y());
+                            let time = game::time();
+
+                            if let Ok(json_str) = to_string(
+                                &json!({"time": time, "creep_name": name, "pos": pos_str, "source_id": source_id_str}),
+                            ) {
+                                console::log_2(&"[HARVEST_ATTEMPT]".into(), &json_str.into());
+                            }
+
                             let harvest_result = creep.harvest(&source);
 
                             match harvest_result {
                                 Ok(_amount) => {
                                     // 采集成功，继续执行
                                 }
-                                Err(_e) => {
+                                Err(e) => {
+                                    // 采集失败，记录详细错误信息
+                                    let error_reason = match e {
+                                        screeps::action_error_codes::HarvestErrorCode::NotEnoughResources => "资源不足",
+                                        screeps::action_error_codes::HarvestErrorCode::NotOwner => "权限不足",
+                                        screeps::action_error_codes::HarvestErrorCode::Busy => "creep忙碌",
+                                        screeps::action_error_codes::HarvestErrorCode::InvalidTarget => "无效目标",
+                                        screeps::action_error_codes::HarvestErrorCode::NotInRange => "不在范围内",
+                                        screeps::action_error_codes::HarvestErrorCode::Tired => "疲劳状态",
+                                        _ => "未知错误"
+                                    };
+
+                                    if let Ok(json_str) = to_string(
+                                        &json!({"time": time, "creep_name": name, "pos": pos_str, "source_id": source_id_str, "error": error_reason}),
+                                    ) {
+                                        console::error_2(
+                                            &"[HARVEST_FAILED]".into(),
+                                            &json_str.into(),
+                                        );
+                                    }
+
                                     // 采集失败，移除目标
                                     entry.remove();
                                 }
                             }
                         } else {
-                            // 不在范围内，移动到资源
-                            // 记录移动前的详细信息
-                            let _range = pos.get_range_to(source_pos);
+                            // 不在范围内，记录移动前的详细信息
+                            let source_id_str = format!("{:?}", source.id());
+                            let pos_str = format!("x:{},y:{}", pos.x(), pos.y());
+                            let target_pos_str =
+                                format!("x:{},y:{}", source_pos.x(), source_pos.y());
+                            let range = pos.get_range_to(source_pos);
+                            let time = game::time();
+
+                            if let Ok(json_str) = to_string(
+                                &json!({"time": time, "creep_name": name, "current_pos": pos_str, "target_pos": target_pos_str, "range": range, "source_id": source_id_str}),
+                            ) {
+                                console::log_2(&"[MOVE_TO_SOURCE]".into(), &json_str.into());
+                            }
 
                             // 使用智能移动函数
-                            let _moved = smart_move(creep, &source);
+                            let moved = smart_move(creep, &source);
 
-                            // 记录移动后的位置
-                            let _new_pos = creep.pos();
+                            // 记录移动后的位置和结果
+                            let new_pos = creep.pos();
+                            let new_pos_str = format!("x:{},y:{}", new_pos.x(), new_pos.y());
+
+                            if !moved {
+                                if let Ok(json_str) = to_string(
+                                    &json!({"time": time, "creep_name": name, "source_id": source_id_str, "current_pos": new_pos_str, "reason": "移动失败或路径不可达"}),
+                                ) {
+                                    console::warn_2(&"[MOVE_FAILED]".into(), &json_str.into());
+                                }
+                            }
                         }
                     } else {
                         // 资源未找到，移除目标
@@ -131,6 +184,18 @@ pub fn run_creep(creep: &Creep, creep_targets: &mut HashMap<String, CreepTarget>
                     }
                 } else {
                     let sources = room.find(find::SOURCES_ACTIVE, None);
+                    if sources.is_empty() {
+                        // 记录未找到活动资源的情况
+                        let pos_str = format!("x:{},y:{}", pos.x(), pos.y());
+                        let time = game::time();
+
+                        if let Ok(json_str) = to_string(
+                            &json!({"time": time, "creep_name": name, "pos": pos_str, "reason": "未找到活动资源源"}),
+                        ) {
+                            console::warn_2(&"[NO_ACTIVE_SOURCES]".into(), &json_str.into());
+                        }
+                    }
+
                     if let Some(source) = sources.first() {
                         let source_pos = source.pos();
                         entry.insert(CreepTarget::Harvest(source.id()));
