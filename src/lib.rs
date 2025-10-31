@@ -1,61 +1,65 @@
 use hecs::World;
-use js_sys::{JsString, Object, Reflect};
+use js_sys::JsString;
+use js_sys::Object;
+use js_sys::Reflect;
 use log::*;
-// rand::Rng已移除，因为我们只使用thread_rng
-use screeps::{
-    action_error_codes::{CreepMoveToErrorCode, UpgradeControllerErrorCode},
-    constants::{Part, ResourceType},
-    enums::StructureObject,
-    find, game,
-    local::ObjectId,
-    objects::{Creep, Source, StructureController},
-    prelude::*,
-    Direction, HasPosition,
-};
-use std::collections::{HashMap, HashSet};
+use screeps::action_error_codes::CreepMoveToErrorCode;
+use screeps::action_error_codes::UpgradeControllerErrorCode;
+use screeps::find;
+use screeps::game;
+use screeps::Creep;
+use screeps::Direction;
+use screeps::HasId;
+use screeps::HasPosition;
+use screeps::Part;
+use screeps::ResourceType;
+use screeps::SharedCreepProperties;
+use screeps::StructureObject;
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Once;
 use wasm_bindgen::prelude::*;
 
+// 导入子模块
+mod creep;
 mod logging;
+mod movement;
+mod systems;
+mod types;
 
-// 定义CreepTarget枚举
-#[derive(Clone, Debug)]
-enum CreepTarget {
-    Harvest(ObjectId<Source>),
-    Upgrade(ObjectId<StructureController>),
-}
-
-// Hecs 组件
-#[derive(Clone)]
-struct CreepId(String); // Creep ID
+// 导出公共API
+pub use types::*;
 
 // 初始化日志的Once实例
 static INIT_LOGGING: Once = Once::new();
 
-// game_loop
+/// 游戏主循环函数
+///
+/// 这是游戏的主要入口点，每帧被调用一次。
+/// 负责初始化日志、创建世界、运行各种游戏系统。
 #[wasm_bindgen(js_name = loop)]
 pub fn game_loop() {
     // 强制使用Debug级别日志以便捕获所有调试信息
     INIT_LOGGING.call_once(|| logging::setup_logging(logging::Debug));
 
     let mut world = World::new();
-    let mut creep_targets: HashMap<String, CreepTarget> = HashMap::new();
+    let mut creep_targets: HashMap<String, types::CreepTarget> = HashMap::new();
 
     debug!(
         "loop starting! CPU: {}, Time: {}",
-        game::cpu::get_used(),
-        game::time()
+        screeps::game::cpu::get_used(),
+        screeps::game::time()
     );
     // 记录当前房间和creep数量信息
-    let creep_count = game::creeps().keys().collect::<Vec<_>>().len();
-    let room_count = game::rooms().keys().collect::<Vec<_>>().len();
+    let creep_count = screeps::game::creeps().keys().collect::<Vec<_>>().len();
+    let room_count = screeps::game::rooms().keys().collect::<Vec<_>>().len();
     info!(
         "Current game state: {} creeps in {} rooms",
         creep_count, room_count
     );
 
     // 记录所有房间信息
-    for room in game::rooms().values() {
+    for room in screeps::game::rooms().values() {
         info!(
             "Room: {:?}, Energy available: {}, Controllers: {:?}",
             room.name(),
@@ -65,16 +69,16 @@ pub fn game_loop() {
     }
 
     // 添加实体
-    for creep in game::creeps().values() {
-        world.spawn((CreepId(creep.name()),));
+    for creep in screeps::game::creeps().values() {
+        world.spawn((types::CreepId(creep.name()),));
     }
 
     // 运行系统
-    run_creep_system(&mut world, &mut creep_targets);
-    spawn_creep_system();
-    memory_cleanup_system();
+    systems::run_creep_system(&mut world, &mut creep_targets);
+    systems::spawn_creep_system();
+    systems::memory_cleanup_system();
 
-    info!("done! cpu: {}", game::cpu::get_used())
+    info!("done! cpu: {}", screeps::game::cpu::get_used())
 }
 
 // 系统: 运行 Creep
