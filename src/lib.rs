@@ -10,7 +10,7 @@ use screeps::{
     local::ObjectId,
     objects::{Creep, Source, StructureController},
     prelude::*,
-    Direction, HasPosition, MoveToOptions,
+    Direction, HasPosition,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Once;
@@ -19,7 +19,7 @@ use wasm_bindgen::prelude::*;
 mod logging;
 
 // 定义CreepTarget枚举
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum CreepTarget {
     Harvest(ObjectId<Source>),
     Upgrade(ObjectId<StructureController>),
@@ -146,56 +146,134 @@ fn direction_from_delta(dx: i8, dy: i8) -> Direction {
     }
 }
 
-// 智能移动函数 - 新版本
+// 辅助函数：检查并记录creep的身体部件状态
+fn log_creep_body_status(creep: &Creep) {
+    let name = creep.name();
+    let body = creep.body();
+    let body_count = body.len();
+
+    debug!(
+        "log_creep_body_status({}): time={}, Total body parts:{}",
+        name,
+        game::time(),
+        body_count
+    );
+}
+
+// 智能移动函数 - 详细调试版本
 fn smart_move(creep: &Creep, target: &impl HasPosition) -> bool {
     let name = creep.name();
     let creep_pos = creep.pos();
     let target_pos = target.pos();
+    let time = game::time();
 
     debug!(
-        "smart_move: creep {} moving to ({},{}), current position ({},{})",
+        "[{}] smart_move() START: creep={}, current_pos=({},{}), target_pos=({},{}), range={}",
+        time,
         name,
+        creep_pos.x(),
+        creep_pos.y(),
         target_pos.x(),
         target_pos.y(),
-        creep_pos.x(),
-        creep_pos.y()
+        creep_pos.get_range_to(target_pos)
     );
 
-    // 简化版移动部件检查
-    let move_parts = 1; // 简化处理，假设至少有一个移动部件
-    let work_parts = 1;
-    let carry_parts = 1;
+    // 记录身体部件状态
+    log_creep_body_status(creep);
 
-    debug!(
-        "smart_move: creep {} body parts - MOVE: {}, WORK: {}, CARRY: {}",
-        name, move_parts, work_parts, carry_parts
-    );
+    // 检查基本状态但不分析具体部件
+    let body = creep.body();
+    let body_count = body.len();
+    let has_move_parts = body_count > 0; // 简化判断
+
+    debug!("[{}] smart_move(): creep={}, has_body_parts={}, total_body_parts={}, fatigue={}, spawning={}", 
+           time, name, has_move_parts, body_count, creep.fatigue(), creep.spawning());
+
+    // 检查是否有疲劳值
+    if creep.fatigue() > 0 {
+        debug!(
+            "[{}] smart_move(): creep={} cannot move due to fatigue={}",
+            time,
+            name,
+            creep.fatigue()
+        );
+        return false;
+    }
+
+    // 如果没有移动部件，不能移动
+    if !has_move_parts {
+        warn!(
+            "[{}] smart_move(): creep={} has no MOVE parts! Cannot move.",
+            time, name
+        );
+        return false;
+    }
 
     // 如果已经在目标位置附近，返回成功
     if creep_pos.in_range_to(target_pos, 1) {
-        debug!("smart_move: creep {} reached target position", name);
+        debug!(
+            "[{}] smart_move(): creep={} already in range of target position",
+            time, name
+        );
         return true;
     }
 
-    // 尝试使用移动到方法，使用链式调用
-    let options = MoveToOptions::new().reuse_path(5).no_path_finding(false);
+    // 记录移动前的房间和地形信息
+    if let Some(room) = creep.room() {
+        debug!(
+            "[{}] smart_move(): creep={} in room={}, checking terrain at current position",
+            time,
+            name,
+            room.name()
+        );
+    }
 
-    match creep.move_to(target_pos) {
+    debug!(
+        "[{}] smart_move(): creep={} preparing move_to with standard path options",
+        time, name
+    );
+
+    // 记录移动操作
+    let result = creep.move_to(target_pos);
+
+    match result {
         Ok(()) => {
-            debug!("smart_move: creep {} moved successfully", name);
+            info!("[{}] smart_move(): creep={} move_to succeeded", time, name);
+
+            // 检查移动后位置是否变化
+            let new_pos = creep.pos();
+            if new_pos.x() != creep_pos.x() || new_pos.y() != creep_pos.y() {
+                info!(
+                    "[{}] smart_move(): creep={} moved from ({},{}) to ({},{})",
+                    time,
+                    name,
+                    creep_pos.x(),
+                    creep_pos.y(),
+                    new_pos.x(),
+                    new_pos.y()
+                );
+            } else {
+                warn!(
+                    "[{}] smart_move(): creep={} move_to returned Ok but position did not change!",
+                    time, name
+                );
+            }
+
             return true;
         }
         Err(err) => {
             warn!(
-                "smart_move: creep {} move_to failed with error: {:?}",
-                name, err
+                "[{}] smart_move(): creep={} move_to failed with error: {:?}",
+                time, name, err
             );
 
             // 根据错误类型尝试不同的策略
             match err {
                 CreepMoveToErrorCode::NoPath => {
-                    // 没有找到路径，尝试直接移动
-                    warn!("smart_move: No path found, trying direct move");
+                    warn!("[{}] smart_move(): creep={} No path found to target, attempting fallback strategies", 
+                          time, name);
+
+                    // 计算直接方向
                     let dx = (target_pos.x().to_string().parse::<i8>().unwrap_or(0)
                         - creep_pos.x().to_string().parse::<i8>().unwrap_or(0))
                     .signum();
@@ -203,21 +281,27 @@ fn smart_move(creep: &Creep, target: &impl HasPosition) -> bool {
                         - creep_pos.y().to_string().parse::<i8>().unwrap_or(0))
                     .signum();
 
-                    match creep.move_direction(direction_from_delta(dx, dy)) {
+                    let direction = direction_from_delta(dx, dy);
+                    debug!("[{}] smart_move(): creep={} calculated direction={:?} from delta({},{}), attempting direct move", 
+                           time, name, direction, dx, dy);
+
+                    match creep.move_direction(direction) {
                         Ok(()) => {
-                            warn!("smart_move: creep {} used direct move successfully", name);
+                            info!(
+                                "[{}] smart_move(): creep={} direct move to {:?} succeeded",
+                                time, name, direction
+                            );
                             return true;
                         }
-                        Err(err) => {
-                            // 简化处理，移除不兼容的look_for_at调用
-                            warn!("smart_move: Move failed with error: {}, trying alternative direction", err);
+                        Err(dir_err) => {
+                            warn!("[{}] smart_move(): creep={} direct move failed with error: {:?}, trying random move", 
+                                  time, name, dir_err);
 
                             // 尝试随机移动以避免卡住
                             use rand::Rng;
                             let mut rng = rand::thread_rng();
-                            let random_dir = rng.gen_range(1..=8); // 1-8的随机方向
+                            let random_dir = rng.gen_range(1..=8);
 
-                            // 选择一个随机方向
                             let directions = [
                                 Direction::Top,
                                 Direction::TopRight,
@@ -228,21 +312,44 @@ fn smart_move(creep: &Creep, target: &impl HasPosition) -> bool {
                                 Direction::Left,
                                 Direction::TopLeft,
                             ];
-                            let _ = creep.move_direction(directions[random_dir as usize - 1]);
 
-                            return false;
+                            let rand_direction = directions[random_dir as usize - 1];
+                            debug!("[{}] smart_move(): creep={} attempting random move in direction {:?}", 
+                                  time, name, rand_direction);
+
+                            match creep.move_direction(rand_direction) {
+                                Ok(()) => {
+                                    info!(
+                                        "[{}] smart_move(): creep={} random move succeeded",
+                                        time, name
+                                    );
+                                    return true;
+                                }
+                                Err(rand_err) => {
+                                    error!("[{}] smart_move(): creep={} ALL movement attempts failed. Last error: {:?}", 
+                                           time, name, rand_err);
+                                    return false;
+                                }
+                            }
                         }
                     }
                 }
                 _ => {
-                    // 其他错误，尝试随机移动
-                    warn!("smart_move: Unknown error, trying random move");
+                    warn!("[{}] smart_move(): creep={} encountered error: {:?}, attempting alternative approaches", 
+                          time, name, err);
 
+                    // 检查是否有障碍物
+                    if let Some(room) = creep.room() {
+                        // 移除不支持的look_for_at调用，使用更简单的方式记录
+                        debug!("[{}] smart_move(): creep={} in room={}, checking for obstacles at current position", 
+                               time, name, room.name());
+                    }
+
+                    // 尝试随机移动
                     use rand::Rng;
                     let mut rng = rand::thread_rng();
-                    let random_dir = rng.gen_range(1..=8); // 1-8的随机方向
+                    let random_dir = rng.gen_range(1..=8);
 
-                    // 选择一个随机方向
                     let directions = [
                         Direction::Top,
                         Direction::TopRight,
@@ -253,133 +360,332 @@ fn smart_move(creep: &Creep, target: &impl HasPosition) -> bool {
                         Direction::Left,
                         Direction::TopLeft,
                     ];
-                    let _ = creep.move_direction(directions[random_dir as usize - 1]);
 
-                    return false;
+                    let rand_direction = directions[random_dir as usize - 1];
+                    debug!("[{}] smart_move(): creep={} trying random direction {:?} due to error {:?}", 
+                           time, name, rand_direction, err);
+
+                    let random_move_result = creep.move_direction(rand_direction);
+                    debug!(
+                        "[{}] smart_move(): creep={} random move result: {:?}",
+                        time, name, random_move_result
+                    );
                 }
             }
+
+            debug!(
+                "[{}] smart_move() END: creep={}, movement failed, returning false",
+                time, name
+            );
+            return false;
         }
     }
 }
 
 fn run_creep(creep: &Creep, creep_targets: &mut HashMap<String, CreepTarget>) {
+    let name = creep.name();
+    let time = game::time();
+
+    debug!("[{}] run_creep() START: creep={}", time, name);
+
+    // 基本状态检查
     if creep.spawning() {
-        debug!("creep {} is still spawning, skipping", creep.name());
+        debug!(
+            "[{}] run_creep(): creep={} is still spawning, skipping movement logic",
+            time, name
+        );
         return;
     }
 
-    let name = creep.name();
+    // 记录当前位置和房间信息
     let pos = creep.pos();
-    debug!("running creep {} at position {},{}", name, pos.x(), pos.y());
+    let room_name = creep
+        .room()
+        .as_ref()
+        .map_or("unknown".to_string(), |r| r.name().to_string());
+    debug!(
+        "[{}] run_creep(): creep={} at position ({},{}) in room={}",
+        time,
+        name,
+        pos.x(),
+        pos.y(),
+        room_name
+    );
 
-    // 简化版移动部件检查
-    let move_parts = 1; // 简化处理，假设至少有一个移动部件
-    if move_parts == 0 {
-        warn!("creep {} has no MOVE parts! Cannot move.", name);
-    } else {
-        debug!("creep {} has {} MOVE parts", name, move_parts);
+    // 记录存储状态
+    let energy_capacity = creep.store().get_capacity(Some(ResourceType::Energy));
+    let energy_amount = creep.store().get_used_capacity(Some(ResourceType::Energy));
+    debug!(
+        "[{}] run_creep(): creep={} energy: {}/{}, fatigue: {}, hits: {}/{}",
+        time,
+        name,
+        energy_amount,
+        energy_capacity,
+        creep.fatigue(),
+        creep.hits(),
+        creep.hits_max()
+    );
+
+    // 简化版身体部件分析，移除可能的编译错误
+    let body = creep.body();
+    let total_parts = body.len();
+
+    debug!(
+        "[{}] run_creep(): creep={} has {} total body parts",
+        time, name, total_parts
+    );
+
+    // 检查是否被卡住或无法移动的状态
+    if creep.fatigue() > 0 {
+        debug!(
+            "[{}] run_creep(): creep={} cannot move due to fatigue: {}",
+            time,
+            name,
+            creep.fatigue()
+        );
     }
 
+    // 目标处理逻辑
     let target = creep_targets.entry(name.clone());
     match target {
         std::collections::hash_map::Entry::Occupied(entry) => {
             let creep_target = entry.get();
+            debug!(
+                "[{}] run_creep(): creep={} has existing target: {:?}",
+                time, name, creep_target
+            );
+
             match creep_target {
                 CreepTarget::Upgrade(controller_id)
                     if creep.store().get_used_capacity(Some(ResourceType::Energy)) > 0 =>
                 {
-                    debug!("creep {} attempting to upgrade controller", name);
+                    debug!(
+                        "[{}] run_creep(): creep={} has energy, attempting to upgrade controller",
+                        time, name
+                    );
+
                     if let Some(controller) = controller_id.resolve() {
                         let controller_pos = controller.pos();
+                        let range = pos.get_range_to(controller_pos);
+                        debug!("[{}] run_creep(): creep={} controller at ({},{}), range={}, can_upgrade={}", 
+                               time, name, controller_pos.x(), controller_pos.y(), range,
+                               creep.pos().is_near_to(controller_pos));
+
+                        // 升级控制器逻辑
+                        let upgrade_result = creep.upgrade_controller(&controller);
                         debug!(
-                            "controller position: {},{}",
-                            controller_pos.x(),
-                            controller_pos.y()
+                            "[{}] run_creep(): creep={} upgrade result: {:?}",
+                            time, name, upgrade_result
                         );
 
-                        creep
-                            .upgrade_controller(&controller)
-                            .unwrap_or_else(|e| match e {
+                        match upgrade_result {
+                            Ok(_amount) => {
+                                debug!(
+                                    "[{}] run_creep(): creep={} successfully upgraded controller",
+                                    time, name
+                                );
+                            }
+                            Err(e) => match e {
                                 UpgradeControllerErrorCode::NotInRange => {
-                                    debug!("creep {} not in range of controller, moving...", name);
+                                    debug!("[{}] run_creep(): creep={} not in range of controller, initiating movement", 
+                                           time, name);
+
+                                    // 记录移动前的详细信息
+                                    debug!("[{}] run_creep(): creep={} BEFORE MOVE TO controller - position: ({},{}), range: {}", 
+                                           time, name, pos.x(), pos.y(), range);
+
                                     // 使用智能移动函数
                                     let moved = smart_move(creep, &controller);
-                                    debug!("creep {} move to controller result: {}", name, moved);
+
+                                    // 记录移动后的位置
+                                    let new_pos = creep.pos();
+                                    debug!("[{}] run_creep(): creep={} AFTER MOVE TO controller - moved: {}, new position: ({},{}) - position changed: {}" , 
+                                           time, name, moved, new_pos.x(), new_pos.y(),
+                                           (new_pos.x() != pos.x()) || (new_pos.y() != pos.y()));
                                 }
                                 _ => {
-                                    warn!("couldn't upgrade: {:?}", e);
+                                    warn!("[{}] run_creep(): creep={} couldn't upgrade controller: {:?}, removing target", 
+                                          time, name, e);
                                     entry.remove();
                                 }
-                            });
+                            },
+                        }
                     } else {
-                        warn!("controller not found for creep {}", name);
+                        warn!(
+                            "[{}] run_creep(): creep={} controller not found, removing target",
+                            time, name
+                        );
                         entry.remove();
                     }
                 }
                 CreepTarget::Harvest(source_id)
                     if creep.store().get_free_capacity(Some(ResourceType::Energy)) > 0 =>
                 {
-                    debug!("creep {} attempting to harvest energy", name);
+                    debug!(
+                        "[{}] run_creep(): creep={} has space for energy, attempting to harvest",
+                        time, name
+                    );
+
                     if let Some(source) = source_id.resolve() {
                         let source_pos = source.pos();
+                        let range = pos.get_range_to(source_pos);
+                        let in_range = creep.pos().is_near_to(source_pos);
+
                         debug!(
-                            "source position: {},{} - creep distance: {}",
+                            "[{}] run_creep(): creep={} source at ({},{}), range={}, in_range={}",
+                            time,
+                            name,
                             source_pos.x(),
                             source_pos.y(),
-                            pos.get_range_to(source_pos)
+                            range,
+                            in_range
                         );
 
-                        if creep.pos().is_near_to(source.pos()) {
-                            creep.harvest(&source).unwrap_or_else(|e| {
-                                warn!("couldn't harvest: {:?}", e);
-                                entry.remove();
-                            });
+                        if in_range {
+                            let harvest_result = creep.harvest(&source);
+                            debug!(
+                                "[{}] run_creep(): creep={} harvest result: {:?}",
+                                time, name, harvest_result
+                            );
+
+                            match harvest_result {
+                                Ok(_amount) => {
+                                    debug!(
+                                        "[{}] run_creep(): creep={} successfully harvested energy",
+                                        time, name
+                                    );
+                                }
+                                Err(e) => {
+                                    warn!("[{}] run_creep(): creep={} couldn't harvest: {:?}, removing target", 
+                                          time, name, e);
+                                    entry.remove();
+                                }
+                            }
                         } else {
-                            debug!("creep {} not near source, moving...", name);
+                            debug!(
+                                "[{}] run_creep(): creep={} not near source, initiating movement",
+                                time, name
+                            );
+
+                            // 记录移动前的详细信息
+                            debug!("[{}] run_creep(): creep={} BEFORE MOVE TO source - position: ({},{}), range: {}", 
+                                   time, name, pos.x(), pos.y(), range);
+
                             // 使用智能移动函数
                             let moved = smart_move(creep, &source);
-                            debug!("creep {} move to source result: {}", name, moved);
+
+                            // 记录移动后的位置
+                            let new_pos = creep.pos();
+                            debug!("[{}] run_creep(): creep={} AFTER MOVE TO source - moved: {}, new position: ({},{})
+                                    - position changed: {}", 
+                                   time, name, moved, new_pos.x(), new_pos.y(),
+                                   (new_pos.x() != pos.x()) || (new_pos.y() != pos.y()));
                         }
                     } else {
-                        warn!("source not found for creep {}", name);
+                        warn!(
+                            "[{}] run_creep(): creep={} source not found, removing target",
+                            time, name
+                        );
                         entry.remove();
                     }
                 }
                 _ => {
-                    debug!(
-                        "creep {} target invalid or energy state changed, removing target",
-                        name
-                    );
+                    // 检查目标是否仍然有效
+                    match creep_target {
+                        CreepTarget::Upgrade(_controller_id) => {
+                            let energy =
+                                creep.store().get_used_capacity(Some(ResourceType::Energy));
+                            debug!("[{}] run_creep(): creep={} target is Upgrade but energy={}, removing target", 
+                                   time, name, energy);
+                        }
+                        CreepTarget::Harvest(_source_id) => {
+                            let free_space =
+                                creep.store().get_free_capacity(Some(ResourceType::Energy));
+                            debug!("[{}] run_creep(): creep={} target is Harvest but free_space={}, removing target", 
+                                   time, name, free_space);
+                        }
+                    }
                     entry.remove();
                 }
             }
         }
         std::collections::hash_map::Entry::Vacant(entry) => {
             // no target, let's find one depending on if we have energy
-            debug!("creep {} has no target, finding new one", name);
-            let room = creep.room().expect("couldn't resolve creep room");
-            debug!("creep {} in room: {:?}", name, room.name());
+            debug!(
+                "[{}] run_creep(): creep={} has no target, initiating target selection process",
+                time, name
+            );
 
-            if creep.store().get_used_capacity(Some(ResourceType::Energy)) > 0 {
-                debug!("creep {} has energy, looking for controller", name);
-                for structure in room.find(find::STRUCTURES, None).iter() {
-                    if let StructureObject::StructureController(controller) = structure {
-                        debug!("creep {} found controller, assigning upgrade task", name);
-                        entry.insert(CreepTarget::Upgrade(controller.id()));
-                        break;
+            if let Some(room) = creep.room() {
+                debug!(
+                    "[{}] run_creep(): creep={} in room={}, finding appropriate targets",
+                    time,
+                    name,
+                    room.name()
+                );
+
+                if creep.store().get_used_capacity(Some(ResourceType::Energy)) > 0 {
+                    debug!("[{}] run_creep(): creep={} has {} energy, looking for controller to upgrade", 
+                           time, name, creep.store().get_used_capacity(Some(ResourceType::Energy)));
+
+                    let mut found_controller = false;
+                    for structure in room.find(find::STRUCTURES, None).iter() {
+                        if let StructureObject::StructureController(controller) = structure {
+                            let controller_pos = controller.pos();
+                            debug!("[{}] run_creep(): creep={} found controller at ({},{}) with level={}, assigning upgrade task", 
+                                   time, name, controller_pos.x(), controller_pos.y(), controller.level());
+                            entry.insert(CreepTarget::Upgrade(controller.id()));
+                            found_controller = true;
+                            break;
+                        }
+                    }
+
+                    if !found_controller {
+                        debug!(
+                            "[{}] run_creep(): creep={} couldn't find any controller in room",
+                            time, name
+                        );
+                    }
+                } else {
+                    debug!(
+                        "[{}] run_creep(): creep={} has no energy, looking for active sources",
+                        time, name
+                    );
+
+                    let sources = room.find(find::SOURCES_ACTIVE, None);
+                    debug!(
+                        "[{}] run_creep(): creep={} found {} active sources in room",
+                        time,
+                        name,
+                        sources.len()
+                    );
+
+                    if let Some(source) = sources.first() {
+                        let source_pos = source.pos();
+                        debug!("[{}] run_creep(): creep={} found active source at ({},{}) with energy={}, assigning harvest task", 
+                               time, name, source_pos.x(), source_pos.y(), source.energy());
+                        entry.insert(CreepTarget::Harvest(source.id()));
+                    } else {
+                        debug!(
+                            "[{}] run_creep(): creep={} couldn't find any active sources in room",
+                            time, name
+                        );
                     }
                 }
-            } else if let Some(source) = room.find(find::SOURCES_ACTIVE, None).first() {
-                debug!(
-                    "creep {} has no energy, found active source at {},{}, assigning harvest task",
-                    name,
-                    source.pos().x(),
-                    source.pos().y()
-                );
-                entry.insert(CreepTarget::Harvest(source.id()));
             } else {
-                debug!("creep {} couldn't find any valid targets", name);
+                warn!(
+                    "[{}] run_creep(): creep={} couldn't resolve room! Cannot find targets.",
+                    time, name
+                );
             }
         }
     }
+
+    debug!(
+        "[{}] run_creep() END: creep={} - final position: ({},{})",
+        time,
+        name,
+        creep.pos().x(),
+        creep.pos().y()
+    );
 }
