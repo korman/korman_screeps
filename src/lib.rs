@@ -1,6 +1,9 @@
 use hecs::World;
+use log::LevelFilter::Info;
+use log::*;
 use screeps::{game, SharedCreepProperties};
 use std::collections::HashMap;
+use std::sync::Once;
 use wasm_bindgen::prelude::*;
 
 // 导入子模块
@@ -14,6 +17,7 @@ mod types;
 pub use types::*;
 
 // 移除日志初始化
+static INIT_LOGGING: Once = Once::new();
 
 /// 游戏主循环函数
 ///
@@ -22,6 +26,13 @@ pub use types::*;
 #[wasm_bindgen(js_name = loop)]
 pub fn game_loop() {
     // 初始化（移除日志初始化）
+    INIT_LOGGING.call_once(|| {
+        // show all output of Info level, adjust as needed
+        logging::setup_logging(Info);
+    });
+    let limit = screeps::game::cpu::limit();
+
+    debug!("CPU Limit: {}", limit);
 
     let mut world = World::new();
     let mut creep_targets: HashMap<String, types::CreepTarget> = HashMap::new();
