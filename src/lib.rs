@@ -24,6 +24,7 @@ mod logging;
 // 导入游戏逻辑模块
 mod game_logic;
 use game_logic::creep_logic::{run_creep, CreepTarget};
+use game_logic::spawning::spawn_creep;
 
 thread_local! {
     static CREEP_TARGETS: RefCell<HashMap<String, CreepTarget>> = RefCell::new(HashMap::new());
@@ -65,6 +66,8 @@ pub fn game_loop() {
         },
     );
 
+    debug!("running screep");
+
     if game::time() % 1000 == 0 {
         info!("running memory cleanup");
 
@@ -87,6 +90,9 @@ pub fn game_loop() {
             }
         }
     }
+
+    // 调用从spawning模块导入的spawn_creep函数
+    spawn_creep();
 
     info!(
         "done! cpu: {}, tick_limit: {}",
