@@ -7,14 +7,10 @@ use std::sync::Once;
 use wasm_bindgen::prelude::*;
 
 // 导入子模块
-mod creep;
 mod logging;
-mod movement;
-mod systems;
-mod types;
 
 // 导出公共API
-pub use types::*;
+// pub use types::*;
 
 /// 游戏主循环函数
 ///
