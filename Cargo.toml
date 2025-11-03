@@ -16,6 +16,11 @@ fern = "0.6.2"
 screeps-game-api = { version = "0.23.1", features = ["mmo"] }
 wasm-bindgen = "0.2.93"
 web-sys = { version = "0.3.70", features = ["console"] }
+hecs = "0.10.5"
+rand = "0.8.5"
+getrandom = { version = "0.2", features = ["js"] }
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.43"

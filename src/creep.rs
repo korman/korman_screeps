@@ -1,0 +1,220 @@
+use screeps::{
+    constants::ResourceType, enums::StructureObject, find, game, objects::Creep, HasId,
+    HasPosition, SharedCreepProperties,
+};
+use serde_json::{json, to_string};
+use std::collections::HashMap;
+use wasm_bindgen::prelude::*;
+use web_sys::console;
+
+use crate::movement::smart_move;
+use crate::types::CreepTarget;
+
+/// 运行单个creep的逻辑
+pub fn run_creep(creep: &Creep, creep_targets: &mut HashMap<String, CreepTarget>) {
+    let name = creep.name();
+
+    // 基本状态检查
+    if creep.spawning() {
+        return;
+    }
+
+    // 获取当前位置
+    let pos = creep.pos();
+
+    // 简化版身体部件分析
+    let body = creep.body();
+    let _total_parts = body.len();
+
+    // 目标处理逻辑
+    let target = creep_targets.entry(name.clone());
+    match target {
+        std::collections::hash_map::Entry::Occupied(entry) => {
+            let creep_target = entry.get();
+
+            match creep_target {
+                CreepTarget::Upgrade(controller_id)
+                    if creep.store().get_used_capacity(Some(ResourceType::Energy)) > 0 =>
+                {
+                    if let Some(controller) = controller_id.resolve() {
+                        let controller_pos = controller.pos();
+                        let _range = pos.get_range_to(controller_pos);
+
+                        // 升级控制器逻辑
+                        let upgrade_result = creep.upgrade_controller(&controller);
+
+                        match upgrade_result {
+                            Ok(_amount) => {
+                                // 升级成功，继续执行
+                            }
+                            Err(e) => match e {
+                                screeps::action_error_codes::UpgradeControllerErrorCode::NotInRange => {
+                                    // 使用智能移动函数
+                                    let _moved = smart_move(creep, &controller);
+                                }
+                                _ => {
+                                    // 其他错误，移除目标
+                                    entry.remove();
+                                }
+                            },
+                        }
+                    } else {
+                        // 控制器未找到，移除目标
+                        entry.remove();
+                    }
+                }
+                CreepTarget::Harvest(source_id)
+                    if creep.store().get_free_capacity(Some(ResourceType::Energy)) > 0 =>
+                {
+                    if let Some(source) = source_id.resolve() {
+                        let source_pos = source.pos();
+                        let _range = pos.get_range_to(source_pos);
+                        let in_range = creep.pos().is_near_to(source_pos);
+
+                        if in_range {
+                            // 准备采集前记录详细信息
+                            let source_id_str = format!("{:?}", source.id());
+                            let pos_str = format!("x:{},y:{}", pos.x(), pos.y());
+                            let time = game::time();
+
+                            if let Ok(json_str) = to_string(
+                                &json!({"time": time, "creep_name": name, "pos": pos_str, "source_id": source_id_str}),
+                            ) {
+                                console::log_2(&"[HARVEST_ATTEMPT]".into(), &json_str.into());
+                            }
+
+                            let harvest_result = creep.harvest(&source);
+
+                            match harvest_result {
+                                Ok(_amount) => {
+                                    // 采集成功，继续执行
+                                }
+                                Err(e) => {
+                                    // 采集失败，记录详细错误信息
+                                    let error_reason = match e {
+                                        screeps::action_error_codes::HarvestErrorCode::NotEnoughResources => "资源不足",
+                                        screeps::action_error_codes::HarvestErrorCode::NotOwner => "权限不足",
+                                        screeps::action_error_codes::HarvestErrorCode::Busy => "creep忙碌",
+                                        screeps::action_error_codes::HarvestErrorCode::InvalidTarget => "无效目标",
+                                        screeps::action_error_codes::HarvestErrorCode::NotInRange => "不在范围内",
+                                        screeps::action_error_codes::HarvestErrorCode::Tired => "疲劳状态",
+                                        _ => "未知错误"
+                                    };
+
+                                    if let Ok(json_str) = to_string(
+                                        &json!({"time": time, "creep_name": name, "pos": pos_str, "source_id": source_id_str, "error": error_reason}),
+                                    ) {
+                                        console::error_2(
+                                            &"[HARVEST_FAILED]".into(),
+                                            &json_str.into(),
+                                        );
+                                    }
+
+                                    // 采集失败，移除目标
+                                    entry.remove();
+                                }
+                            }
+                        } else {
+                            // 不在范围内，记录移动前的详细信息
+                            let source_id_str = format!("{:?}", source.id());
+                            let pos_str = format!("x:{},y:{}", pos.x(), pos.y());
+                            let target_pos_str =
+                                format!("x:{},y:{}", source_pos.x(), source_pos.y());
+                            let range = pos.get_range_to(source_pos);
+                            let time = game::time();
+
+                            if let Ok(json_str) = to_string(
+                                &json!({"time": time, "creep_name": name, "current_pos": pos_str, "target_pos": target_pos_str, "range": range, "source_id": source_id_str}),
+                            ) {
+                                console::log_2(&"[MOVE_TO_SOURCE]".into(), &json_str.into());
+                            }
+
+                            // 使用智能移动函数
+                            let moved = smart_move(creep, &source);
+
+                            // 记录移动后的位置和结果
+                            let new_pos = creep.pos();
+                            let new_pos_str = format!("x:{},y:{}", new_pos.x(), new_pos.y());
+
+                            if !moved {
+                                if let Ok(json_str) = to_string(
+                                    &json!({"time": time, "creep_name": name, "source_id": source_id_str, "current_pos": new_pos_str, "reason": "移动失败或路径不可达"}),
+                                ) {
+                                    console::warn_2(&"[MOVE_FAILED]".into(), &json_str.into());
+                                }
+                            }
+                        }
+                    } else {
+                        // 资源未找到，移除目标
+                        entry.remove();
+                    }
+                }
+                _ => {
+                    // 检查目标是否仍然有效
+                    entry.remove();
+                }
+            }
+        }
+        std::collections::hash_map::Entry::Vacant(entry) => {
+            // 没有目标，根据能量状态寻找目标
+            if let Some(room) = creep.room() {
+                if creep.store().get_used_capacity(Some(ResourceType::Energy)) > 0 {
+                    let mut found_controller = false;
+                    for structure in room.find(find::STRUCTURES, None).iter() {
+                        if let StructureObject::StructureController(controller) = structure {
+                            let controller_pos = controller.pos();
+                            entry.insert(CreepTarget::Upgrade(controller.id()));
+                            found_controller = true;
+
+                            // 立即尝试移动到控制器，而不是等到下一个tick
+                            let _range = pos.get_range_to(controller_pos);
+                            if !creep.pos().is_near_to(controller_pos) && creep.fatigue() == 0 {
+                                // 使用智能移动函数
+                                let _moved = smart_move(creep, &controller);
+                                // 记录移动后的位置
+                                let _new_pos = creep.pos();
+                            }
+
+                            break;
+                        }
+                    }
+
+                    if !found_controller {
+                        // 未找到控制器
+                    }
+                } else {
+                    let sources = room.find(find::SOURCES_ACTIVE, None);
+                    if sources.is_empty() {
+                        // 记录未找到活动资源的情况
+                        let pos_str = format!("x:{},y:{}", pos.x(), pos.y());
+                        let time = game::time();
+
+                        if let Ok(json_str) = to_string(
+                            &json!({"time": time, "creep_name": name, "pos": pos_str, "reason": "未找到活动资源源"}),
+                        ) {
+                            console::warn_2(&"[NO_ACTIVE_SOURCES]".into(), &json_str.into());
+                        }
+                    }
+
+                    if let Some(source) = sources.first() {
+                        let source_pos = source.pos();
+                        entry.insert(CreepTarget::Harvest(source.id()));
+
+                        // 立即尝试移动到资源，而不是等到下一个tick
+                        let _range = pos.get_range_to(source_pos);
+                        if !creep.pos().is_near_to(source_pos) && creep.fatigue() == 0 {
+                            // 使用智能移动函数
+                            let _moved = smart_move(creep, &source);
+                            // 记录移动后的位置
+                            let _new_pos = creep.pos();
+                        }
+                    } else {
+                        // 未找到活动资源
+                    }
+                }
+            } else {
+                // 无法解析房间，无法寻找目标
+            }
+        }
+    }
+}
