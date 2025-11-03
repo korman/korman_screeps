@@ -20,9 +20,10 @@ use std::{
 };
 
 use wasm_bindgen::prelude::*;
-
-// 导入子模块
 mod logging;
+// 导入游戏逻辑模块
+mod game_logic;
+use game_logic::creep_logic::{run_creep, CreepTarget};
 
 thread_local! {
     static CREEP_TARGETS: RefCell<HashMap<String, CreepTarget>> = RefCell::new(HashMap::new());
@@ -34,11 +35,7 @@ thread_local! {
 // 日志初始化静态变量
 static INIT_LOGGING: Once = Once::new();
 
-#[derive(Clone)]
-enum CreepTarget {
-    Upgrade(ObjectId<StructureController>),
-    Harvest(ObjectId<Source>),
-}
+// CreepTarget现在在game_logic::creep_logic模块中定义
 
 /// 游戏主循环函数
 ///
@@ -50,6 +47,23 @@ pub fn game_loop() {
     INIT_LOGGING.call_once(|| {
         logging::setup_logging(Info);
     });
+
+    debug!("loop starting! CPU: {}", game::cpu::get_used());
+
+    CREEP_TARGETS.with(
+        |creep_targets_refcell: &RefCell<HashMap<String, CreepTarget>>| {
+            let mut creep_targets: std::cell::RefMut<'_, HashMap<String, CreepTarget>> =
+                creep_targets_refcell.borrow_mut();
+
+            for creep in game::creeps().values() {
+                info!("creep {}: {:?}", creep.name(), creep);
+                // 调用run_creep函数处理每个creep的行为
+                run_creep(&creep, &mut creep_targets);
+            }
+
+            info!("running creeps");
+        },
+    );
 
     if game::time() % 1000 == 0 {
         info!("running memory cleanup");
