@@ -59,6 +59,10 @@ pub fn run_creep(creep: &Creep, creep_targets: &mut HashMap<String, CreepTarget>
                         } else {
                             entry.remove();
                         }
+                    } else {
+                        // 能量耗尽，移除目标以便重新分配任务
+                        debug!("creep {} energy depleted, removing upgrade target", creep.name());
+                        entry.remove();
                     }
                 }
                 CreepTarget::Harvest(source_id) => {
