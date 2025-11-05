@@ -1,21 +1,12 @@
-use hecs::World;
 use log::LevelFilter::Info;
 use log::*;
-use screeps::{
-    action_error_codes::*,
-    constants::{Part, ResourceType},
-    enums::StructureObject,
-    find, game,
-    local::ObjectId,
-    objects::{Creep, Source, StructureController},
-    prelude::*,
-};
+use screeps::{game, prelude::*};
 
 use js_sys::{JsString, Object, Reflect};
 
 use std::{
     cell::RefCell,
-    collections::{hash_map::Entry, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     sync::Once,
 };
 
@@ -77,6 +68,8 @@ pub fn game_loop() {
             alive_creeps.insert(creep_name);
         }
 
+        // 暂时使用已弃用的ROOT，但添加allow属性抑制警告
+        #[allow(deprecated)]
         if let Ok(memory_creeps) = Reflect::get(&screeps::memory::ROOT, &JsString::from("creeps")) {
             let memory_creeps: Object = memory_creeps.unchecked_into();
 
